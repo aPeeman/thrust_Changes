@@ -98,7 +98,7 @@ namespace __copy_if {
 
     enum
     {
-      NOMINAL_4B_ITEMS_PER_THREAD = 9,
+      NOMINAL_4B_ITEMS_PER_THREAD = 16,
       ITEMS_PER_THREAD            = CUB_MIN(NOMINAL_4B_ITEMS_PER_THREAD, CUB_MAX(1, (NOMINAL_4B_ITEMS_PER_THREAD * 4 / sizeof(T)))),
     };
 
@@ -789,6 +789,7 @@ copy_if(execution_policy<Derived> &policy,
         OutputIterator             result,
         Predicate                  pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIterator ret = result;
 
   if (__THRUST_HAS_CUDART__)
@@ -811,6 +812,59 @@ copy_if(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIterator par(execution_policy<Derived>& policy,
+                      InputIterator              first,
+                      InputIterator              last,
+                      OutputIterator             result,
+                      Predicate                  pred)
+      {
+        return __copy_if::copy_if(policy,
+                                  first,
+                                  last,
+                                  __copy_if::no_stencil_tag(),
+                                  result,
+                                  pred);
+      }
+
+      __device__
+      static OutputIterator par(execution_policy<Derived>& policy,
+                      InputIterator              first,
+                      InputIterator              last,
+                      OutputIterator             result,
+                      Predicate                  pred)
+      {
+          return thrust::copy_if(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                result,
+                                pred);
+      }
+
+      __device__
+      static OutputIterator seq(execution_policy<Derived>& policy,
+                      InputIterator              first,
+                      InputIterator              last,
+                      OutputIterator             result,
+                      Predicate                  pred)
+      {
+          return thrust::copy_if(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                result,
+                                pred);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, result, pred);
+#else
+  return workaround::seq(policy, first, last, result, pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 } // func copy_if
 
 __thrust_exec_check_disable__
@@ -827,6 +881,7 @@ copy_if(execution_policy<Derived> &policy,
         OutputIterator             result,
         Predicate                  pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIterator ret = result;
 
   if (__THRUST_HAS_CUDART__)
@@ -850,6 +905,68 @@ copy_if(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIterator par(
+        execution_policy<Derived>& policy,
+        InputIterator              first,
+        InputIterator              last,
+        StencilIterator            stencil,
+        OutputIterator             result,
+        Predicate                  pred)
+      {
+        return __copy_if::copy_if(policy,
+                                  first,
+                                  last,
+                                  stencil,
+                                  result,
+                                  pred);
+      }
+
+      __device__
+      static OutputIterator par(
+        execution_policy<Derived>& policy,
+        InputIterator              first,
+        InputIterator              last,
+        StencilIterator            stencil,
+        OutputIterator             result,
+        Predicate                  pred)
+      {
+          return thrust::copy_if(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                stencil,
+                                result,
+                                pred);
+      }
+
+      __device__
+      static OutputIterator seq(
+        execution_policy<Derived>& policy,
+        InputIterator              first,
+        InputIterator              last,
+        StencilIterator            stencil,
+        OutputIterator             result,
+        Predicate                  pred)
+      {
+          return thrust::copy_if(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                stencil,
+                                result,
+                                pred);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, stencil, result, pred);
+#else
+  return workaround::seq(policy, first, last, stencil, result, pred);
+#endif
+
+#endif //GPU_FUSION_COMPILE_THRUST
 }    // func copy_if
 
 }    // namespace cuda_cub

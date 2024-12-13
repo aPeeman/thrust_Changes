@@ -1363,6 +1363,7 @@ set_difference(execution_policy<Derived> &policy,
                OutputIt                   result,
                CompareOp                  compare)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1395,6 +1396,77 @@ set_difference(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        typename thrust::iterator_value<ItemsIt1>::type *null_ = NULL;
+        return __set_operations::set_operations<thrust::detail::false_type>(
+                  policy,
+                  items1_first,
+                  items1_last,
+                  items2_first,
+                  items2_last,
+                  null_,
+                  null_,
+                  result,
+                  null_,
+                  compare,
+                  __set_operations::serial_set_difference())
+                  .first;
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_difference(cvt_to_seq(derived_cast(policy)),
+                                      items1_first,
+                                      items1_last,
+                                      items2_first,
+                                      items2_last,
+                                      result,
+                                      compare);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_difference(cvt_to_seq(derived_cast(policy)),
+                                      items1_first,
+                                      items1_last,
+                                      items2_first,
+                                      items2_last,
+                                      result,
+                                      compare);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#else
+  return workaround::seq(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -1437,6 +1509,7 @@ set_intersection(execution_policy<Derived> &policy,
                  OutputIt                   result,
                  CompareOp                  compare)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1469,6 +1542,79 @@ set_intersection(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        typename thrust::iterator_value<ItemsIt1>::type *null_ = NULL;
+      //
+      return __set_operations::set_operations<thrust::detail::false_type>(
+                policy,
+                items1_first,
+                items1_last,
+                items2_first,
+                items2_last,
+                null_,
+                null_,
+                result,
+                null_,
+                compare,
+                __set_operations::serial_set_intersection())
+                .first;
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_intersection(cvt_to_seq(derived_cast(policy)),
+                                        items1_first,
+                                        items1_last,
+                                        items2_first,
+                                        items2_last,
+                                        result,
+                                        compare);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_intersection(cvt_to_seq(derived_cast(policy)),
+                                        items1_first,
+                                        items1_last,
+                                        items2_first,
+                                        items2_last,
+                                        result,
+                                        compare);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#else
+  return workaround::seq(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
+
 }
 
 template <class Derived,
@@ -1511,6 +1657,7 @@ set_symmetric_difference(execution_policy<Derived> &policy,
                          OutputIt                   result,
                          CompareOp                  compare)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1543,6 +1690,78 @@ set_symmetric_difference(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+      typename thrust::iterator_value<ItemsIt1>::type *null_ = NULL;
+      //
+      return __set_operations::set_operations<thrust::detail::false_type>(
+                policy,
+                items1_first,
+                items1_last,
+                items2_first,
+                items2_last,
+                null_,
+                null_,
+                result,
+                null_,
+                compare,
+                __set_operations::serial_set_symmetric_difference())
+                .first;
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_symmetric_difference(cvt_to_seq(derived_cast(policy)),
+                                                items1_first,
+                                                items1_last,
+                                                items2_first,
+                                                items2_last,
+                                                result,
+                                                compare);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_symmetric_difference(cvt_to_seq(derived_cast(policy)),
+                                            items1_first,
+                                            items1_last,
+                                            items2_first,
+                                            items2_last,
+                                            result,
+                                            compare);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#else
+  return workaround::seq(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 
@@ -1585,6 +1804,7 @@ set_union(execution_policy<Derived> &policy,
           OutputIt                   result,
           CompareOp                  compare)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1617,6 +1837,78 @@ set_union(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+      typename thrust::iterator_value<ItemsIt1>::type *null_ = NULL;
+      //
+    return __set_operations::set_operations<thrust::detail::false_type>(
+                policy,
+                items1_first,
+                items1_last,
+                items2_first,
+                items2_last,
+                null_,
+                null_,
+                result,
+                null_,
+                compare,
+                __set_operations::serial_set_union())
+                .first;
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_union(cvt_to_seq(derived_cast(policy)),
+                                items1_first,
+                                items1_last,
+                                items2_first,
+                                items2_last,
+                                result,
+                                compare);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived> &policy,
+                          ItemsIt1                   items1_first,
+                          ItemsIt1                   items1_last,
+                          ItemsIt2                   items2_first,
+                          ItemsIt2                   items2_last,
+                          OutputIt                   result,
+                          CompareOp                  compare)
+      {
+        return thrust::set_union(cvt_to_seq(derived_cast(policy)),
+                                items1_first,
+                                items1_last,
+                                items2_first,
+                                items2_last,
+                                result,
+                                compare);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#else
+  return workaround::seq(policy, items1_first, items1_last, items2_first, items2_last, result, compare);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 
@@ -1672,6 +1964,7 @@ set_difference_by_key(execution_policy<Derived> &policy,
                       ItemsOutputIt              items_result,
                       CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<KeysOutputIt, ItemsOutputIt> ret = thrust::make_pair(keys_result, items_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -1704,6 +1997,90 @@ set_difference_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return  __set_operations::set_operations<thrust::detail::true_type>(
+              policy,
+              keys1_first,
+              keys1_last,
+              keys2_first,
+              keys2_last,
+              items1_first,
+              items2_first,
+              keys_result,
+              items_result,
+              compare_op,
+              __set_operations::serial_set_difference());
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_difference_by_key(cvt_to_seq(derived_cast(policy)),
+                                            keys1_first,
+                                            keys1_last,
+                                            keys2_first,
+                                            keys2_last,
+                                            items1_first,
+                                            items2_first,
+                                            keys_result,
+                                            items_result,
+                                            compare_op);
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> seq(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_difference_by_key(cvt_to_seq(derived_cast(policy)),
+                                            keys1_first,
+                                            keys1_last,
+                                            keys2_first,
+                                            keys2_last,
+                                            items1_first,
+                                            items2_first,
+                                            keys_result,
+                                            items_result,
+                                            compare_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first,items2_first, keys_result,items_result, compare_op);
+#else
+  return workaround::seq(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first,items2_first, keys_result,items_result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -1759,6 +2136,7 @@ set_intersection_by_key(execution_policy<Derived> &policy,
                         ItemsOutputIt              items_result,
                         CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<KeysOutputIt, ItemsOutputIt> ret = thrust::make_pair(keys_result, items_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -1790,6 +2168,85 @@ set_intersection_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return  __set_operations::set_operations<thrust::detail::true_type>(
+                policy,
+                keys1_first,
+                keys1_last,
+                keys2_first,
+                keys2_last,
+                items1_first,
+                items1_first,
+                keys_result,
+                items_result,
+                compare_op,
+                __set_operations::serial_set_intersection());
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_intersection_by_key(cvt_to_seq(derived_cast(policy)),
+                                              keys1_first,
+                                              keys1_last,
+                                              keys2_first,
+                                              keys2_last,
+                                              items1_first,
+                                              keys_result,
+                                              items_result,
+                                              compare_op);
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> seq(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_intersection_by_key(cvt_to_seq(derived_cast(policy)),
+                                              keys1_first,
+                                              keys1_last,
+                                              keys2_first,
+                                              keys2_last,
+                                              items1_first,
+                                              keys_result,
+                                              items_result,
+                                              compare_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, keys_result,items_result, compare_op);
+#else
+  return workaround::seq(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, keys_result,items_result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -1844,6 +2301,7 @@ set_symmetric_difference_by_key(execution_policy<Derived> &policy,
                                 ItemsOutputIt              items_result,
                                 CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<KeysOutputIt, ItemsOutputIt> ret = thrust::make_pair(keys_result, items_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -1876,6 +2334,90 @@ set_symmetric_difference_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return  __set_operations::set_operations<thrust::detail::true_type>(
+                policy,
+                keys1_first,
+                keys1_last,
+                keys2_first,
+                keys2_last,
+                items1_first,
+                items2_first,
+                keys_result,
+                items_result,
+                compare_op,
+                __set_operations::serial_set_symmetric_difference());
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_symmetric_difference_by_key(cvt_to_seq(derived_cast(policy)),
+                                                      keys1_first,
+                                                      keys1_last,
+                                                      keys2_first,
+                                                      keys2_last,
+                                                      items1_first,
+                                                      items2_first,
+                                                      keys_result,
+                                                      items_result,
+                                                      compare_op);
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> seq(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_symmetric_difference_by_key(cvt_to_seq(derived_cast(policy)),
+                                                      keys1_first,
+                                                      keys1_last,
+                                                      keys2_first,
+                                                      keys2_last,
+                                                      items1_first,
+                                                      items2_first,
+                                                      keys_result,
+                                                      items_result,
+                                                      compare_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, items2_first, keys_result,items_result, compare_op);
+#else
+  return workaround::seq(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, items2_first, keys_result,items_result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -1932,6 +2474,7 @@ set_union_by_key(execution_policy<Derived> &policy,
                  ItemsOutputIt              items_result,
                  CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<KeysOutputIt, ItemsOutputIt> ret = thrust::make_pair(keys_result, items_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -1964,6 +2507,90 @@ set_union_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static  pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return  __set_operations::set_operations<thrust::detail::true_type>(
+                policy,
+                keys1_first,
+                keys1_last,
+                keys2_first,
+                keys2_last,
+                items1_first,
+                items2_first,
+                keys_result,
+                items_result,
+                compare_op,
+                __set_operations::serial_set_union());
+      }
+
+      __device__
+      static  pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_union_by_key(cvt_to_seq(derived_cast(policy)),
+                                        keys1_first,
+                                        keys1_last,
+                                        keys2_first,
+                                        keys2_last,
+                                        items1_first,
+                                        items2_first,
+                                        keys_result,
+                                        items_result,
+                                        compare_op);
+        }
+
+      __device__
+      static  pair<KeysOutputIt, ItemsOutputIt> seq(execution_policy<Derived> &policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::set_union_by_key(cvt_to_seq(derived_cast(policy)),
+                                        keys1_first,
+                                        keys1_last,
+                                        keys2_first,
+                                        keys2_last,
+                                        items1_first,
+                                        items2_first,
+                                        keys_result,
+                                        items_result,
+                                        compare_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, items2_first, keys_result,items_result, compare_op);
+#else
+  return workaround::seq(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, items2_first, keys_result,items_result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

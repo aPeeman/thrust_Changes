@@ -727,6 +727,7 @@ lower_bound(execution_policy<Derived>& policy,
             OutputIt                   result,
             CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -751,6 +752,68 @@ lower_bound(execution_policy<Derived>& policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived>& policy,
+                          HaystackIt                 first,
+                          HaystackIt                 last,
+                          NeedlesIt                  values_first,
+                          NeedlesIt                  values_last,
+                          OutputIt                   result,
+                          CompareOp                  compare_op)
+      {
+        return __binary_search::doit(policy,
+                                first,
+                                last,
+                                values_first,
+                                values_last,
+                                result,
+                                compare_op,
+                                __binary_search::lbf<HaystackIt, NeedlesIt>());
+      }
+     __device__
+      static OutputIt par(execution_policy<Derived>& policy,
+                          HaystackIt                 first,
+                          HaystackIt                 last,
+                          NeedlesIt                  values_first,
+                          NeedlesIt                  values_last,
+                          OutputIt                   result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::lower_bound(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  values_first,
+                                  values_last,
+                                  result);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived>& policy,
+                          HaystackIt                 first,
+                          HaystackIt                 last,
+                          NeedlesIt                  values_first,
+                          NeedlesIt                  values_last,
+                          OutputIt                   result,
+                          CompareOp                  compare_op)
+      {
+        return thrust::lower_bound(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  values_first,
+                                  values_last,
+                                  result);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, values_first, values_last, result, compare_op);
+#else
+  return workaround::seq(policy, first, last, values_first, values_last, result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 

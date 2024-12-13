@@ -418,6 +418,7 @@ min_element(execution_policy<Derived> &policy,
             ItemsIt                    last,
             BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   ItemsIt ret = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -436,6 +437,52 @@ min_element(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+struct workaround
+{
+    __host__
+    static ItemsIt par(execution_policy<Derived> &policy,
+                        ItemsIt                    first,
+                        ItemsIt                    last,
+                        BinaryPred                 binary_pred)
+    {
+      return __extrema::element<__extrema::arg_min_f>(policy,
+                                                      first,
+                                                      last,
+                                                      binary_pred);
+    }
+
+    __device__
+    static ItemsIt par(execution_policy<Derived> &policy,
+                        ItemsIt                    first,
+                        ItemsIt                    last,
+                        BinaryPred                 binary_pred)
+    {
+      return thrust::min_element(cvt_to_seq(derived_cast(policy)),
+                              first,
+                              last,
+                              binary_pred);
+    }
+
+
+    __device__
+   static ItemsIt seq(execution_policy<Derived> &policy,
+                        ItemsIt                    first,
+                        ItemsIt                    last,
+                        BinaryPred                 binary_pred)
+    {
+      return thrust::min_element(cvt_to_seq(derived_cast(policy)),
+                              first,
+                              last,
+                              binary_pred);
+    }
+};
+#if __THRUST_HAS_CUDART__
+    return workaround::par(policy, first, last, binary_pred);
+#else
+    return workaround::seq(policy, first, last, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -461,6 +508,7 @@ max_element(execution_policy<Derived> &policy,
             ItemsIt                    last,
             BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   ItemsIt ret = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -479,6 +527,52 @@ max_element(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static ItemsIt par(execution_policy<Derived> &policy,
+                          ItemsIt                    first,
+                          ItemsIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+        return __extrema::element<__extrema::arg_max_f>(policy,
+                                                        first,
+                                                        last,
+                                                        binary_pred);
+      }
+
+      __device__
+      static ItemsIt par(execution_policy<Derived> &policy,
+                          ItemsIt                    first,
+                          ItemsIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+        return thrust::max_element(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                binary_pred);
+      }
+
+
+      __device__
+    static ItemsIt seq(execution_policy<Derived> &policy,
+                          ItemsIt                    first,
+                          ItemsIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+        return thrust::max_element(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                binary_pred);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, binary_pred);
+#else
+  return workaround::seq(policy, first, last, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -504,6 +598,7 @@ minmax_element(execution_policy<Derived> &policy,
                ItemsIt                    last,
                BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<ItemsIt, ItemsIt> ret = thrust::make_pair(first, first);
 
   if (__THRUST_HAS_CUDART__)
@@ -550,6 +645,78 @@ minmax_element(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<ItemsIt, ItemsIt> par(execution_policy<Derived> &policy,
+                          ItemsIt                    first,
+                          ItemsIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+        if (first == last)
+        return thrust::make_pair(last, last);
+
+      typedef typename iterator_traits<ItemsIt>::value_type      InputType;
+      typedef typename iterator_traits<ItemsIt>::difference_type IndexType;
+
+      IndexType num_items = static_cast<IndexType>(thrust::distance(first, last));
+
+
+      typedef tuple<ItemsIt, counting_iterator_t<IndexType> > iterator_tuple;
+      typedef zip_iterator<iterator_tuple> zip_iterator;
+
+      iterator_tuple iter_tuple = thrust::make_tuple(first, counting_iterator_t<IndexType>(0));
+
+
+      typedef __extrema::arg_minmax_f<InputType, IndexType, BinaryPred> arg_minmax_t;
+      typedef typename arg_minmax_t::two_pairs_type  two_pairs_type;
+      typedef typename arg_minmax_t::duplicate_tuple duplicate_t;
+      typedef transform_input_iterator_t<two_pairs_type,
+                                        zip_iterator,
+                                        duplicate_t>
+          transform_t;
+
+      zip_iterator   begin  = make_zip_iterator(iter_tuple);
+      two_pairs_type result = __extrema::extrema(policy,
+                                                transform_t(begin, duplicate_t()),
+                                                num_items,
+                                                arg_minmax_t(binary_pred),
+                                                (two_pairs_type *)(NULL));
+      return thrust::make_pair(first + get<1>(get<0>(result)),
+                      first + get<1>(get<1>(result)));
+      }
+
+      __device__
+      static pair<ItemsIt, ItemsIt> par(execution_policy<Derived> &policy,
+                          ItemsIt                    first,
+                          ItemsIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+        return thrust::minmax_element(cvt_to_seq(derived_cast(policy)),
+                                      first,
+                                      last,
+                                      binary_pred);
+      }
+
+      __device__
+    static pair<ItemsIt, ItemsIt> seq(execution_policy<Derived> &policy,
+                          ItemsIt                    first,
+                          ItemsIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+        return thrust::minmax_element(cvt_to_seq(derived_cast(policy)),
+                                      first,
+                                      last,
+                                      binary_pred);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, binary_pred);
+#else
+  return workaround::seq(policy, first, last, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

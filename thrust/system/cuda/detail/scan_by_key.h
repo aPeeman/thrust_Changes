@@ -141,7 +141,7 @@ namespace __scan_by_key {
 
       ITEMS_PER_THREAD =
           (Tuning::MAX_INPUT_BYTES <= 8)
-              ? 9
+              ? 6
               : mpl::min<
                     int,
                     NOMINAL_4B_ITEMS_PER_THREAD,
@@ -806,6 +806,7 @@ inclusive_scan_by_key(execution_policy<Derived> &policy,
                       BinaryPred                 binary_pred,
                       ScanOp                     scan_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   ValOutputIt ret = value_result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -832,6 +833,72 @@ inclusive_scan_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static ValOutputIt par(execution_policy<Derived>& policy,
+                          KeyInputIt                 key_first,
+                          KeyInputIt                 key_last,
+                          ValInputIt                 value_first,
+                          ValOutputIt                value_result,
+                          BinaryPred                 binary_pred,
+                          ScanOp                     scan_op)
+      {
+        typedef typename iterator_traits<ValInputIt>::value_type T;
+        return __scan_by_key::scan_by_key<thrust::detail::true_type>(policy,
+                                                            key_first,
+                                                            key_last,
+                                                            value_first,
+                                                            value_result,
+                                                            binary_pred,
+                                                            scan_op,
+                                                            __scan_by_key::DoNothing<T>());
+      }
+
+      __device__
+      static ValOutputIt par(execution_policy<Derived>& policy,
+                          KeyInputIt                 key_first,
+                          KeyInputIt                 key_last,
+                          ValInputIt                 value_first,
+                          ValOutputIt                value_result,
+                          BinaryPred                 binary_pred,
+                          ScanOp                     scan_op)
+      {
+        return thrust::inclusive_scan_by_key(cvt_to_seq(derived_cast(policy)),
+                                          key_first,
+                                          key_last,
+                                          value_first,
+                                          value_result,
+                                          binary_pred,
+                                          scan_op);
+      }
+
+      __device__
+      static ValOutputIt seq(execution_policy<Derived>& policy,
+                          KeyInputIt                 key_first,
+                          KeyInputIt                 key_last,
+                          ValInputIt                 value_first,
+                          ValOutputIt                value_result,
+                          BinaryPred                 binary_pred,
+                          ScanOp                     scan_op)
+      {
+        return thrust::inclusive_scan_by_key(cvt_to_seq(derived_cast(policy)),
+                                          key_first,
+                                          key_last,
+                                          value_first,
+                                          value_result,
+                                          binary_pred,
+                                          scan_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, key_first, key_last, value_first, value_result, binary_pred, scan_op);
+#else
+  return workaround::seq(policy, key_first, key_last, value_first, value_result, binary_pred, scan_op);
+#endif
+#endif
 }
 
 template <class Derived,
@@ -900,6 +967,7 @@ exclusive_scan_by_key(execution_policy<Derived> &policy,
                       BinaryPred                 binary_pred,
                       ScanOp                     scan_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   ValOutputIt ret = value_result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -927,6 +995,77 @@ exclusive_scan_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static ValOutputIt par(execution_policy<Derived>& policy,
+                            KeyInputIt                 key_first,
+                            KeyInputIt                 key_last,
+                            ValInputIt                 value_first,
+                            ValOutputIt                value_result,
+                            Init                       init,
+                            BinaryPred                 binary_pred,
+                            ScanOp                     scan_op)
+      {
+        return __scan_by_key::scan_by_key<thrust::detail::false_type>(
+          policy,
+          key_first,
+          key_last,
+          value_first,
+          value_result,
+          binary_pred,
+          scan_op,
+          __scan_by_key::AddInitToScan<Init, ScanOp>(init, scan_op));
+      }
+
+      __device__
+      static ValOutputIt par(execution_policy<Derived>& policy,
+                            KeyInputIt                 key_first,
+                            KeyInputIt                 key_last,
+                            ValInputIt                 value_first,
+                            ValOutputIt                value_result,
+                            Init                       init,
+                            BinaryPred                 binary_pred,
+                            ScanOp                     scan_op)
+      {
+        return thrust::exclusive_scan_by_key(cvt_to_seq(derived_cast(policy)),
+                                          key_first,
+                                          key_last,
+                                          value_first,
+                                          value_result,
+                                          init,
+                                          binary_pred,
+                                          scan_op);
+      }
+
+      __device__
+      static ValOutputIt seq(execution_policy<Derived>& policy,
+                            KeyInputIt                 key_first,
+                            KeyInputIt                 key_last,
+                            ValInputIt                 value_first,
+                            ValOutputIt                value_result,
+                            Init                       init,
+                            BinaryPred                 binary_pred,
+                            ScanOp                     scan_op)
+      {
+        return thrust::exclusive_scan_by_key(cvt_to_seq(derived_cast(policy)),
+                                          key_first,
+                                          key_last,
+                                          value_first,
+                                          value_result,
+                                          init,
+                                          binary_pred,
+                                          scan_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, key_first, key_last, value_first, value_result, init, binary_pred, scan_op);
+#else
+  return workaround::seq(policy, key_first, key_last, value_first, value_result, init, binary_pred, scan_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

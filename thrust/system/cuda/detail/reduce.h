@@ -142,6 +142,33 @@ namespace __reduce {
                                                  ReducePolicy1B,
                                                  ReducePolicy4B>::type type;
   };    // Tuning sm35
+#ifndef USE_GPU_FUSION_DEFAULT_POLICY
+  template <class T>
+  struct Tuning<sm52, T> : Tuning<sm35,T>
+  {
+    // ReducePolicy1B (GTX Titan: 228.7 GB/s @ 192M 1B items)
+    typedef PtxPolicy<128,
+                      CUB_MAX(1, 24 / Tuning::SCALE_FACTOR_1B),
+                      4,
+                      cub::BLOCK_REDUCE_WARP_REDUCTIONS,
+                      cub::LOAD_LDG,
+                      cub::GRID_MAPPING_DYNAMIC>
+        ReducePolicy1B;
+
+    // ReducePolicy4B types (GTX Titan: 255.1 GB/s @ 48M 4B items)
+    typedef PtxPolicy<256,
+                      CUB_MAX(1, 20 / Tuning::SCALE_FACTOR_4B),
+                      4,
+                      cub::BLOCK_REDUCE_WARP_REDUCTIONS,
+                      cub::LOAD_LDG,
+                      cub::GRID_MAPPING_DYNAMIC>
+        ReducePolicy4B;
+
+    typedef typename thrust::detail::conditional<(sizeof(T) < 4),
+                                                 ReducePolicy1B,
+                                                 ReducePolicy4B>::type type;
+  };  
+#endif
 
   template <class InputIt,
             class OutputIt,
@@ -1018,6 +1045,7 @@ T reduce_n(execution_policy<Derived>& policy,
            T                          init,
            BinaryOp                   binary_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   if (__THRUST_HAS_CUDART__)
     return thrust::cuda_cub::detail::reduce_n_impl(
       policy, first, num_items, init, binary_op);
@@ -1026,6 +1054,55 @@ T reduce_n(execution_policy<Derived>& policy,
     return thrust::reduce(
       cvt_to_seq(derived_cast(policy)), first, first + num_items, init, binary_op);
   #endif
+
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__ 
+      static T par(execution_policy<Derived>& policy,
+                      InputIt                    first,
+                      Size                       num_items,
+                      T                          init,
+                      BinaryOp                   binary_op)
+      {
+        return thrust::cuda_cub::detail::reduce_n_impl(
+                policy, first, num_items, init, binary_op);
+      }
+      
+       __device__
+      static T par(execution_policy<Derived>& policy,
+                      InputIt                    first,
+                      Size                       num_items,
+                      T                          init,
+                      BinaryOp                   binary_op)
+      {
+         return thrust::reduce(
+             cvt_to_seq(derived_cast(policy)),
+             first,
+             first + num_items,
+             init,
+             binary_op
+          );
+      }
+
+      __device__
+      static T seq(execution_policy<Derived>& policy,
+                      InputIt                    first,
+                      Size                       num_items,
+                      T                          init,
+                      BinaryOp                   binary_op)
+      {
+        return thrust::reduce(
+               cvt_to_seq(derived_cast(policy)), first, first + num_items, init, binary_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+    return workaround::par(policy, first, num_items, init, binary_op);
+#else
+    return workaround::seq(policy, first, num_items, init, binary_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived, class InputIt, class T, class BinaryOp>

@@ -824,6 +824,7 @@ unique_by_key_copy(execution_policy<Derived> &policy,
                    ValOutputIt                values_result,
                    BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<KeyOutputIt, ValOutputIt> ret = thrust::make_pair(keys_result, values_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -848,6 +849,69 @@ unique_by_key_copy(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<KeyOutputIt, ValOutputIt> par(execution_policy<Derived>& policy,
+                                                KeyInputIt                 keys_first,
+                                                KeyInputIt                 keys_last,
+                                                ValInputIt                 values_first,
+                                                KeyOutputIt                keys_result,
+                                                ValOutputIt                values_result,
+                                                BinaryPred                 binary_pred)
+      {
+        return  __unique_by_key::unique_by_key(policy,
+                                  keys_first,
+                                  keys_last,
+                                  values_first,
+                                  keys_result,
+                                  values_result,
+                                  binary_pred);
+      }
+
+      __device__
+      static pair<KeyOutputIt, ValOutputIt> par(execution_policy<Derived>& policy,
+                                                KeyInputIt                 keys_first,
+                                                KeyInputIt                 keys_last,
+                                                ValInputIt                 values_first,
+                                                KeyOutputIt                keys_result,
+                                                ValOutputIt                values_result,
+                                                BinaryPred                 binary_pred)
+      {
+          return thrust::unique_by_key_copy(cvt_to_seq(derived_cast(policy)),
+                                      keys_first,
+                                      keys_last,
+                                      values_first,
+                                      keys_result,
+                                      values_result,
+                                      binary_pred);
+      }
+
+      __device__
+      static pair<KeyOutputIt, ValOutputIt> seq(execution_policy<Derived>& policy,
+                                                KeyInputIt                 keys_first,
+                                                KeyInputIt                 keys_last,
+                                                ValInputIt                 values_first,
+                                                KeyOutputIt                keys_result,
+                                                ValOutputIt                values_result,
+                                                BinaryPred                 binary_pred)
+      {
+          return thrust::unique_by_key_copy(cvt_to_seq(derived_cast(policy)),
+                                      keys_first,
+                                      keys_last,
+                                      values_first,
+                                      keys_result,
+                                      values_result,
+                                      binary_pred);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys_first, keys_last, values_first, keys_result, values_result, binary_pred);
+#else
+  return workaround::seq(policy, keys_first, keys_last, values_first, keys_result, values_result, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -884,6 +948,7 @@ unique_by_key(execution_policy<Derived> &policy,
               ValInputIt                 values_first,
               BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<KeyInputIt, ValInputIt> ret = thrust::make_pair(keys_first, values_first);
   if (__THRUST_HAS_CUDART__)
   {
@@ -906,6 +971,62 @@ unique_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<KeyInputIt, ValInputIt>par(
+          execution_policy<Derived>& policy,
+          KeyInputIt                 keys_first,
+          KeyInputIt                 keys_last,
+          ValInputIt                 values_first,
+          BinaryPred                 binary_pred)
+      {
+        return cuda_cub::unique_by_key_copy(policy,
+                                        keys_first,
+                                        keys_last,
+                                        values_first,
+                                        keys_first,
+                                        values_first,
+                                        binary_pred);
+      }
+
+      __device__
+      static pair<KeyInputIt, ValInputIt> par(
+          execution_policy<Derived>& policy,
+          KeyInputIt                 keys_first,
+          KeyInputIt                 keys_last,
+          ValInputIt                 values_first,
+          BinaryPred                 binary_pred)
+      {
+          return thrust::unique_by_key(cvt_to_seq(derived_cast(policy)),
+                                      keys_first,
+                                      keys_last,
+                                      values_first,
+                                      binary_pred);
+      }
+
+      __device__
+      static pair<KeyInputIt, ValInputIt> seq(
+          execution_policy<Derived>& policy,
+          KeyInputIt                 keys_first,
+          KeyInputIt                 keys_last,
+          ValInputIt                 values_first,
+          BinaryPred                 binary_pred)
+      {
+          return thrust::unique_by_key(cvt_to_seq(derived_cast(policy)),
+                                      keys_first,
+                                      keys_last,
+                                      values_first,
+                                      binary_pred);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys_first, keys_last, values_first, binary_pred);
+#else
+  return workaround::seq(policy, keys_first, keys_last, values_first, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

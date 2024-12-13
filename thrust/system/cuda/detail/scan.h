@@ -219,6 +219,7 @@ OutputIt inclusive_scan_n(thrust::cuda_cub::execution_policy<Derived> &policy,
                           OutputIt result,
                           ScanOp scan_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -239,6 +240,57 @@ OutputIt inclusive_scan_n(thrust::cuda_cub::execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived>& policy,
+                        InputIt                    first,
+                        Size                       num_items,
+                        OutputIt                   result,
+                        ScanOp                     scan_op)
+      {
+        return thrust::cuda_cub::detail::inclusive_scan_n_impl(policy,
+                                                              first,
+                                                              num_items,
+                                                              result,
+                                                              scan_op);
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived>& policy,
+                        InputIt                    first,
+                        Size                       num_items,
+                        OutputIt                   result,
+                        ScanOp                     scan_op)
+      {
+        return thrust::inclusive_scan(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  first + num_items,
+                                  result,
+                                  scan_op);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived>& policy,
+                        InputIt                    first,
+                        Size                       num_items,
+                        OutputIt                   result,
+                        ScanOp                     scan_op)
+      {
+        return thrust::inclusive_scan(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  first + num_items,
+                                  result,
+                                  scan_op);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, num_items, result, scan_op);
+#else
+  return workaround::seq(policy, first, num_items, result, scan_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <typename Derived, typename InputIt, typename OutputIt, typename ScanOp>
@@ -287,6 +339,7 @@ OutputIt exclusive_scan_n(thrust::cuda_cub::execution_policy<Derived> &policy,
                           T init,
                           ScanOp scan_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -309,6 +362,64 @@ OutputIt exclusive_scan_n(thrust::cuda_cub::execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived>& policy,
+                          InputIt                    first,
+                          Size                       num_items,
+                          OutputIt                   result,
+                          T                          init,
+                          ScanOp                     scan_op)
+      {
+          return thrust::cuda_cub::detail::exclusive_scan_n_impl(policy,
+                                                                first,
+                                                                num_items,
+                                                                result,
+                                                                init,
+                                                                scan_op);
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived>& policy,
+                          InputIt                    first,
+                          Size                       num_items,
+                          OutputIt                   result,
+                          T                          init,
+                          ScanOp                     scan_op)
+      {
+        return thrust::exclusive_scan(cvt_to_seq(derived_cast(policy)),
+                                      first,
+                                      first + num_items,
+                                      result,
+                                      init,
+                                      scan_op);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived>& policy,
+                          InputIt                    first,
+                          Size                       num_items,
+                          OutputIt                   result,
+                          T                          init,
+                          ScanOp                     scan_op)
+      {
+        return thrust::exclusive_scan(cvt_to_seq(derived_cast(policy)),
+                                      first,
+                                      first + num_items,
+                                      result,
+                                      init,
+                                      scan_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, num_items, result, init, scan_op);
+#else
+  return workaround::seq(policy, first, num_items, result, init, scan_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <typename Derived,

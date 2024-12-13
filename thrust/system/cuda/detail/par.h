@@ -102,22 +102,28 @@ struct par_t : execution_policy<par_t>,
   {
     return execute_on_stream(stream);
   }
-};
+}; 
 
+typedef par_t par_nosync_t; //v2.1.0
 THRUST_INLINE_CONSTANT par_t par;
+THRUST_INLINE_CONSTANT par_t par_nosync; //v2.1.0
+
 }    // namespace cuda_
 
 namespace system {
 namespace cuda {
   using thrust::cuda_cub::par;
+  using thrust::cuda_cub::par_nosync; //v2.1.0
   namespace detail {
     using thrust::cuda_cub::par_t;
+    using thrust::cuda_cub::par_nosync_t; //v2.1.0
   }
 } // namesapce cuda
 } // namespace system
 
 namespace cuda {
 using thrust::cuda_cub::par;
+using thrust::cuda_cub::par_nosync;
 } // namespace cuda
 
 THRUST_NAMESPACE_END

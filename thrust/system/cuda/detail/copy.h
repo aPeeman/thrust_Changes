@@ -117,6 +117,7 @@ copy(execution_policy<System> &system,
      InputIterator             last,
      OutputIterator            result)
 {
+#if GPU_FUSION_COMPILE_THRUST
   OutputIterator ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -133,6 +134,52 @@ copy(execution_policy<System> &system,
   }
 
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIterator par(
+          execution_policy<System>& system,
+          InputIterator             first,
+          InputIterator             last,
+          OutputIterator            result)
+      {
+          return __copy::device_to_device(system, first, last, result);
+      }
+
+        __device__
+      static OutputIterator par(
+          execution_policy<System>& system,
+          InputIterator             first,
+          InputIterator             last,
+          OutputIterator            result)
+      {
+          return thrust::copy(cvt_to_seq(derived_cast(system)),
+                              first,
+                              last,
+                              result);
+      }
+
+      __device__
+      static OutputIterator seq(
+          execution_policy<System>& system,
+          InputIterator             first,
+          InputIterator             last,
+          OutputIterator            result)
+      {
+          return thrust::copy(cvt_to_seq(derived_cast(system)),
+                              first,
+                              last,
+                              result);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(system, first, last, result);
+#else
+  return workaround::seq(system, first, last, result);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }    // end copy()
 
 __thrust_exec_check_disable__
@@ -146,6 +193,7 @@ copy_n(execution_policy<System> &system,
        Size                      n,
        OutputIterator            result)
 {
+#if GPU_FUSION_COMPILE_THRUST
   OutputIterator ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -159,6 +207,47 @@ copy_n(execution_policy<System> &system,
   }
 
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIterator par(
+          execution_policy<System>& system,
+          InputIterator             first,
+          Size                      n,
+          OutputIterator            result)
+      {
+          return __copy::device_to_device(system, first, first + n, result);
+      }
+
+      __device__
+      static OutputIterator par(
+          execution_policy<System>& system,
+          InputIterator             first,
+          Size                      n,
+          OutputIterator            result)
+      {
+          return thrust::copy_n(cvt_to_seq(derived_cast(system)), first, n, result);
+      }
+
+      __device__
+      static OutputIterator seq(
+          execution_policy<System>& system,
+          InputIterator             first,
+          Size                      n,
+          OutputIterator            result)
+      {
+          return thrust::copy_n(cvt_to_seq(derived_cast(system)), first, n, result);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  return workaround::par(system, first, n, result);
+#else
+  return workaround::seq(system, first, n, result);
+  #endif
+#endif //GPU_FUSION_COMPILE_THRUST
+
 } // end copy_n()
 #endif
 

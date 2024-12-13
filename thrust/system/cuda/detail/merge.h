@@ -876,6 +876,7 @@ merge(execution_policy<Derived>& policy,
       CompareOp                  compare_op)
 
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   ResultIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -908,6 +909,81 @@ merge(execution_policy<Derived>& policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static ResultIt par(execution_policy<Derived>& policy,
+                      KeysIt1                    keys1_first,
+                      KeysIt1                    keys1_last,
+                      KeysIt2                    keys2_first,
+                      KeysIt2                    keys2_last,
+                      ResultIt                   result,
+                      CompareOp                  compare_op)
+      {
+        typedef typename thrust::iterator_value<KeysIt1>::type keys_type;
+        //
+        keys_type* null_ = NULL;
+        //
+        return __merge::merge<thrust::detail::false_type>(policy,
+                                                        keys1_first,
+                                                        keys1_last,
+                                                        keys2_first,
+                                                        keys2_last,
+                                                        null_,
+                                                        null_,
+                                                        result,
+                                                        null_,
+                                                        compare_op)
+                  .first;
+      }
+
+      __device__
+      static ResultIt par(execution_policy<Derived>& policy,
+                      KeysIt1                    keys1_first,
+                      KeysIt1                    keys1_last,
+                      KeysIt2                    keys2_first,
+                      KeysIt2                    keys2_last,
+                      ResultIt                   result,
+                      CompareOp                  compare_op)
+      {
+          return thrust::merge(
+              cvt_to_seq(derived_cast(policy)),
+              keys1_first,
+              keys1_last,
+              keys2_first,
+              keys2_last,
+              result,
+              compare_op
+          );
+      }
+
+      __device__
+      static ResultIt seq(execution_policy<Derived>& policy,
+                      KeysIt1                    keys1_first,
+                      KeysIt1                    keys1_last,
+                      KeysIt2                    keys2_first,
+                      KeysIt2                    keys2_last,
+                      ResultIt                   result,
+                      CompareOp                  compare_op)
+      {
+          return thrust::merge(
+              cvt_to_seq(derived_cast(policy)),
+              keys1_first,
+              keys1_last,
+              keys2_first,
+              keys2_last,
+              result,
+              compare_op
+          );
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys1_first, keys1_last, keys2_first, keys2_last, result, compare_op);
+#else
+  return workaround::seq(policy, keys1_first, keys1_last, keys2_first, keys2_last, result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived, class KeysIt1, class KeysIt2, class ResultIt>
@@ -950,6 +1026,7 @@ merge_by_key(execution_policy<Derived> &policy,
              ItemsOutputIt              items_result,
              CompareOp                  compare_op)
 {
+#ifdef  GPU_FUSION_COMPILE_THRUST
   pair<KeysOutputIt, ItemsOutputIt> ret = thrust::make_pair(keys_result, items_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -980,6 +1057,93 @@ merge_by_key(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived>& policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+          return __merge::merge<thrust::detail::true_type>(
+            policy,
+            keys1_first,
+            keys1_last,
+            keys2_first,
+            keys2_last,
+            items1_first,
+            items2_first,
+            keys_result,
+            items_result,
+            compare_op
+          );
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> par(execution_policy<Derived>& policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+          return thrust::merge_by_key(
+              cvt_to_seq(derived_cast(policy)),
+                        keys1_first,
+                        keys1_last,
+                        keys2_first,
+                        keys2_last,
+                        items1_first,
+                        items2_first,
+                        keys_result,
+                        items_result,
+                        compare_op
+          );
+      }
+
+      __device__
+      static pair<KeysOutputIt, ItemsOutputIt> seq(execution_policy<Derived>& policy,
+                          KeysIt1                    keys1_first,
+                          KeysIt1                    keys1_last,
+                          KeysIt2                    keys2_first,
+                          KeysIt2                    keys2_last,
+                          ItemsIt1                   items1_first,
+                          ItemsIt2                   items2_first,
+                          KeysOutputIt               keys_result,
+                          ItemsOutputIt              items_result,
+                          CompareOp                  compare_op)
+      {
+          return thrust::merge_by_key(
+              cvt_to_seq(derived_cast(policy)),
+                        keys1_first,
+                        keys1_last,
+                        keys2_first,
+                        keys2_last,
+                        items1_first,
+                        items2_first,
+                        keys_result,
+                        items_result,
+                        compare_op
+          );
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, items2_first, keys_result, items_result, compare_op);
+#else
+  return workaround::seq(policy, keys1_first, keys1_last, keys2_first, keys2_last, items1_first, items2_first, keys_result, items_result, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

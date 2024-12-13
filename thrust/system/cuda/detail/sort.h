@@ -1627,6 +1627,7 @@ sort(execution_policy<Derived>& policy,
      ItemsIt                    last,
      CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   if (__THRUST_HAS_CUDART__)
   {
     typedef typename thrust::iterator_value<ItemsIt>::type item_type;
@@ -1639,6 +1640,45 @@ sort(execution_policy<Derived>& policy,
     thrust::sort(cvt_to_seq(derived_cast(policy)), first, last, compare_op);
 #endif
   }
+
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static void par(execution_policy<Derived>& policy,
+                      ItemsIt                    first,
+                      ItemsIt                    last,
+                      CompareOp                  compare_op)
+      {
+        typedef typename thrust::iterator_value<ItemsIt>::type item_type;
+        __smart_sort::smart_sort<thrust::detail::false_type, thrust::detail::false_type>(
+            policy, first, last, (item_type*)NULL, compare_op);
+      }
+      
+      __device__
+      static void par(execution_policy<Derived>& policy,
+              ItemsIt                    first,
+              ItemsIt                    last,
+              CompareOp                  compare_op)
+      {
+        thrust::sort(cvt_to_seq(derived_cast(policy)), first, last, compare_op);
+      }
+
+      __device__
+      static void seq(execution_policy<Derived>& policy,
+              ItemsIt                    first,
+              ItemsIt                    last,
+              CompareOp                  compare_op)
+      {
+        thrust::sort(cvt_to_seq(derived_cast(policy)), first, last, compare_op);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  workaround::par(policy, first, last, compare_op);
+#else
+  workaround::seq(policy, first, last, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -1649,6 +1689,7 @@ stable_sort(execution_policy<Derived>& policy,
             ItemsIt                    last,
             CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   if (__THRUST_HAS_CUDART__)
   {
     typedef typename thrust::iterator_value<ItemsIt>::type item_type;
@@ -1661,6 +1702,44 @@ stable_sort(execution_policy<Derived>& policy,
     thrust::stable_sort(cvt_to_seq(derived_cast(policy)), first, last, compare_op);
 #endif
   }
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static void par(execution_policy<Derived>& policy,
+                      ItemsIt                    first,
+                      ItemsIt                    last,
+                      CompareOp                  compare_op)
+      {
+        typedef typename thrust::iterator_value<ItemsIt>::type item_type;
+        __smart_sort::smart_sort<thrust::detail::false_type, thrust::detail::true_type>(
+          policy, first, last, (item_type*)NULL, compare_op);
+      }
+
+      __device__
+      static void par(execution_policy<Derived>& policy,
+              ItemsIt                    first,
+              ItemsIt                    last,
+              CompareOp                  compare_op)
+      {
+        thrust::stable_sort(cvt_to_seq(derived_cast(policy)), first, last, compare_op);
+      }
+
+      __device__
+      static void seq(execution_policy<Derived>& policy,
+              ItemsIt                    first,
+              ItemsIt                    last,
+              CompareOp                  compare_op)
+      {
+        thrust::stable_sort(cvt_to_seq(derived_cast(policy)), first, last, compare_op);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  workaround::par(policy, first, last, compare_op);
+#else
+  workaround::seq(policy, first, last, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -1672,6 +1751,7 @@ sort_by_key(execution_policy<Derived>& policy,
             ValuesIt                   values,
             CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   if (__THRUST_HAS_CUDART__)
   {
     __smart_sort::smart_sort<thrust::detail::true_type, thrust::detail::false_type>(
@@ -1684,6 +1764,49 @@ sort_by_key(execution_policy<Derived>& policy,
         cvt_to_seq(derived_cast(policy)), keys_first, keys_last, values, compare_op);
 #endif
   }
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static void par(execution_policy<Derived>& policy,
+                      KeysIt                     keys_first,
+                      KeysIt                     keys_last,
+                      ValuesIt                   values,
+                      CompareOp                  compare_op)
+      {
+        __smart_sort::smart_sort<thrust::detail::true_type, thrust::detail::false_type>(
+          policy, keys_first, keys_last, values, compare_op);
+      }
+
+      __device__
+      static void par(execution_policy<Derived>& policy,
+          KeysIt                     keys_first,
+          KeysIt                     keys_last,
+          ValuesIt                   values,
+          CompareOp                  compare_op)
+      {
+      thrust::sort_by_key(
+          cvt_to_seq(derived_cast(policy)), keys_first, keys_last, values, compare_op);
+      }
+
+      __device__
+      static void seq(execution_policy<Derived>& policy,
+          KeysIt                     keys_first,
+          KeysIt                     keys_last,
+          ValuesIt                   values,
+          CompareOp                  compare_op)
+      {
+      thrust::sort_by_key(
+          cvt_to_seq(derived_cast(policy)), keys_first, keys_last, values, compare_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  workaround::par(policy, keys_first, keys_last, values, compare_op);
+#else
+  workaround::seq(policy, keys_first, keys_last, values, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -1698,6 +1821,7 @@ stable_sort_by_key(execution_policy<Derived> &policy,
             ValuesIt                   values,
             CompareOp                  compare_op)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   if (__THRUST_HAS_CUDART__)
   {
     __smart_sort::smart_sort<thrust::detail::true_type, thrust::detail::true_type>(
@@ -1710,6 +1834,49 @@ stable_sort_by_key(execution_policy<Derived> &policy,
         cvt_to_seq(derived_cast(policy)), keys_first, keys_last, values, compare_op);
 #endif
   }
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static void par(execution_policy<Derived>& policy,
+                      KeysIt                     keys_first,
+                      KeysIt                     keys_last,
+                      ValuesIt                   values,
+                      CompareOp                  compare_op)
+      {
+      __smart_sort::smart_sort<thrust::detail::true_type, thrust::detail::true_type>(
+          policy, keys_first, keys_last, values, compare_op);
+      }
+      
+      __device__
+      static void par(execution_policy<Derived>& policy,
+          KeysIt                     keys_first,
+          KeysIt                     keys_last,
+          ValuesIt                   values,
+          CompareOp                  compare_op)
+      {
+        thrust::stable_sort_by_key(
+          cvt_to_seq(derived_cast(policy)), keys_first, keys_last, values, compare_op);
+      }
+
+      __device__
+      static void seq(execution_policy<Derived>& policy,
+          KeysIt                     keys_first,
+          KeysIt                     keys_last,
+          ValuesIt                   values,
+          CompareOp                  compare_op)
+      {
+        thrust::stable_sort_by_key(
+          cvt_to_seq(derived_cast(policy)), keys_first, keys_last, values, compare_op);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  workaround::par(policy, keys_first, keys_last, values, compare_op);
+#else
+  workaround::seq(policy, keys_first, keys_last, values, compare_op);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 // API with default comparator

@@ -136,6 +136,25 @@ namespace __adjacent_difference {
                       cub::BLOCK_STORE_WARP_TRANSPOSE>
         type;
   };
+  
+#ifndef USE_GPU_FUSION_DEFAULT_POLICY
+  template <class T>
+  struct Tuning<sm52, T> : Tuning<sm35,T>
+  {
+    enum
+    {
+      NOMINAL_4B_ITEMS_PER_THREAD = 7,
+      ITEMS_PER_THREAD            = items_per_thread<Tuning::INPUT_SIZE,
+                                          NOMINAL_4B_ITEMS_PER_THREAD>::value
+    };
+    typedef PtxPolicy<128,
+                      ITEMS_PER_THREAD,
+                      cub::BLOCK_LOAD_WARP_TRANSPOSE,
+                      cub::LOAD_LDG,
+                      cub::BLOCK_STORE_WARP_TRANSPOSE>
+        type;
+  };
+#endif
 
   template <class InputIt,
             class OutputIt,
@@ -491,6 +510,7 @@ adjacent_difference(execution_policy<Derived> &policy,
                     OutputIt                   result,
                     BinaryOp                   binary_op)
 {
+#ifdef  GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -512,6 +532,63 @@ adjacent_difference(execution_policy<Derived> &policy,
   }
 
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static void par(execution_policy<Derived>& policy,
+                      InputIt                    first,
+                      InputIt                    last,
+                      OutputIt&                  result,
+                      BinaryOp                   binary_op)
+      {
+          result = __adjacent_difference::adjacent_difference(
+              policy,
+              first,
+              last,
+              result,
+              binary_op
+          );
+      }
+      __device__
+      static void par(execution_policy<Derived>& policy,
+                      InputIt                    first,
+                      InputIt                    last,
+                      OutputIt&                  result,
+                      BinaryOp                   binary_op)
+      {
+          result = thrust::adjacent_difference(
+              cvt_to_seq(derived_cast(policy)),
+              first,
+              last,
+              result,
+              binary_op
+          );
+      }
+
+      __device__
+      static void seq(execution_policy<Derived>& policy,
+                      InputIt                    first,
+                      InputIt                    last,
+                      OutputIt&                  result,
+                      BinaryOp                   binary_op)
+      {
+          result = thrust::adjacent_difference(
+              cvt_to_seq(derived_cast(policy)),
+              first,
+              last,
+              result,
+              binary_op
+          );
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  workaround::par(policy, first, last, result, binary_op);
+#else
+  workaround::seq(policy, first, last, result, binary_op);
+#endif
+  return result;
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

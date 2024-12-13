@@ -45,7 +45,8 @@ default_stream()
 #ifdef CUDA_API_PER_THREAD_DEFAULT_STREAM
   return cudaStreamPerThread;
 #else
-  return cudaStreamLegacy;
+  //return cudaStreamLegacy;
+  return cudaStreamDefault; // There's not cudaStreamLegacy
 #endif
 }
 
@@ -67,6 +68,7 @@ stream(execution_policy<Derived> &policy)
 }
 
 // Fallback implementation of the customization point.
+#ifdef GPU_FUSION_COMPILE_THRUST
 __thrust_exec_check_disable__
 template <class Derived>
 __host__ __device__
@@ -93,14 +95,48 @@ synchronize_stream(execution_policy<Derived> &policy)
   }
   return result;
 }
-
+#else //GPU_FUSION_COMPILE_THRUST
+__thrust_exec_check_disable__
+template <class Derived>
+cudaError_t synchronize_stream(execution_policy<Derived> &policy)
+{
+  cudaError_t result;
+  if (THRUST_IS_HOST_CODE) {
+    #if THRUST_INCLUDE_HOST_CODE
+      cudaStreamSynchronize(stream(policy));
+      result = cudaGetLastError();
+    #endif
+  } else {
+    #if THRUST_INCLUDE_DEVICE_CODE
+      #if __THRUST_HAS_CUDART__
+        THRUST_UNUSED_VAR(policy);
+        cudaDeviceSynchronize();
+        result = cudaGetLastError();
+      #else
+        THRUST_UNUSED_VAR(policy);
+        result = cudaSuccess;
+      #endif
+    #endif
+  }
+  return result;
+}
+#endif //GPU_FUSION_COMPILE_THRUST
 // Entry point/interface.
 template <class Policy>
 __host__ __device__
 cudaError_t
 synchronize(Policy &policy)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   return synchronize_stream(derived_cast(policy));
+#else //GPU_FUSION_COMPILE_THRUST
+#if __THRUST_HAS_CUDART__
+    return synchronize_stream(derived_cast(policy));
+#else
+    THRUST_UNUSED_VAR(policy);
+    return cudaSuccess;
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Type>
@@ -213,8 +249,36 @@ inline void throw_on_error(cudaError_t status, char const *msg)
 #if __THRUST_HAS_CUDART__
   // Clear the global CUDA error state which may have been set by the last
   // call. Otherwise, errors may "leak" to unrelated kernel launches.
+#ifdef GPU_FUSION_COMPILE_THRUST
   cudaGetLastError();
-#endif
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+    __host__ 
+    static void par()
+    {
+      cudaGetLastError();
+    }
+
+    __device__ 
+    static void par()
+    {
+    }
+
+    __device__ 
+    static void seq()
+    {
+    }
+
+  };
+
+#if __THRUST_HAS_CUDART__
+    workaround::par();
+#else
+    workaround::seq();
+#endif //__THRUST_HAS_CUDART__
+#endif //GPU_FUSION_COMPILE_THRUST
+#endif //__THRUST_HAS_CUDART__
 
   if (cudaSuccess != status)
   {
@@ -267,11 +331,19 @@ struct transform_input_iterator_t
 
   // UnaryOp might not be copy assignable, such as when it is a lambda.  Define
   // an explicit copy assignment operator that doesn't try to assign it.
+#ifdef GPU_FUSION_COMPILE_THRUST
   self_t& operator=(const self_t& o)
   {
     input = o.input;
     return *this;
   }
+#else //GPU_FUSION_COMPILE_THRUST
+  __host__ __device__ __forceinline__  self_t& operator=(const self_t& o)
+  {
+    input = o.input;
+    return *this;
+  }
+#endif //GPU_FUSION_COMPILE_THRUST
 
   /// Postfix increment
   __host__ __device__ __forceinline__ self_t operator++(int)
@@ -381,13 +453,21 @@ struct transform_pair_of_input_iterators_t
 
   // BinaryOp might not be copy assignable, such as when it is a lambda.
   // Define an explicit copy assignment operator that doesn't try to assign it.
+#ifdef GPU_FUSION_COMPILE_THRUST
   self_t& operator=(const self_t& o)
   {
     input1 = o.input1;
     input2 = o.input2;
     return *this;
   }
-
+#else //GPU_FUSION_COMPILE_THRUST
+  __host__ __device__ __forceinline__ self_t& operator=(const self_t& o)
+  {
+    input1 = o.input1;
+    input2 = o.input2;
+    return *this;
+  }
+#endif //GPU_FUSION_COMPILE_THRUST
   /// Postfix increment
   __host__ __device__ __forceinline__ self_t operator++(int)
   {

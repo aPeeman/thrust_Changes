@@ -719,6 +719,7 @@ unique_copy(execution_policy<Derived> &policy,
             OutputIt                   result,
             BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   OutputIt ret = result;
   if (__THRUST_HAS_CUDART__)
   {
@@ -739,6 +740,57 @@ unique_copy(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static OutputIt par(execution_policy<Derived>& policy,
+                    InputIt                    first,
+                    InputIt                    last,
+                    OutputIt                   result,
+                    BinaryPred                 binary_pred)
+      {
+      return __unique::unique(policy,
+                              first,
+                              last,
+                              result,
+                              binary_pred);
+      }
+
+      __device__
+      static OutputIt par(execution_policy<Derived>& policy,
+                    InputIt                    first,
+                    InputIt                    last,
+                    OutputIt                   result,
+                    BinaryPred                 binary_pred)
+      {
+        return thrust::unique_copy(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  result,
+                                  binary_pred);
+      }
+
+      __device__
+      static OutputIt seq(execution_policy<Derived>& policy,
+                    InputIt                    first,
+                    InputIt                    last,
+                    OutputIt                   result,
+                    BinaryPred                 binary_pred)
+      {
+        return thrust::unique_copy(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  result,
+                                  binary_pred);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, result, binary_pred);
+#else
+  return workaround::seq(policy, first, last, result, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
@@ -766,6 +818,7 @@ unique(execution_policy<Derived> &policy,
        InputIt                    last,
        BinaryPred                 binary_pred)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   InputIt ret = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -781,6 +834,48 @@ unique(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static InputIt par(execution_policy<Derived>& policy,
+                          InputIt                    first,
+                          InputIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+          return cuda_cub::unique_copy(policy, first, last, first, binary_pred);
+      }
+
+      __device__
+      static InputIt par(execution_policy<Derived>& policy,
+                          InputIt                    first,
+                          InputIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+          return thrust::unique(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                binary_pred);
+      }
+
+      __device__
+      static InputIt seq(execution_policy<Derived>& policy,
+                          InputIt                    first,
+                          InputIt                    last,
+                          BinaryPred                 binary_pred)
+      {
+          return thrust::unique(cvt_to_seq(derived_cast(policy)),
+                                first,
+                                last,
+                                binary_pred);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, binary_pred);
+#else
+  return workaround::seq(policy, first, last, binary_pred);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,

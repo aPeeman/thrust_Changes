@@ -64,6 +64,13 @@ namespace __parallel_for {
     typedef PtxPolicy<256, 2> type;
   };
 
+#ifndef USE_GPU_FUSION_DEFAULT_POLICY
+  template <class F>
+  struct Tuning<sm52, F>
+  {
+    typedef PtxPolicy<256, 4> type;
+  };
+#endif
 
   template <class F,
             class Size>
@@ -156,7 +163,7 @@ parallel_for(execution_policy<Derived> &policy,
 {
   if (count == 0)
     return;
-
+#ifdef GPU_FUSION_COMPILE_THRUST
   if (__THRUST_HAS_CUDART__)
   {
     cudaStream_t stream = cuda_cub::stream(policy);
@@ -170,6 +177,38 @@ parallel_for(execution_policy<Derived> &policy,
       f(idx);
 #endif
   }
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static void par(execution_policy<Derived>& policy, F f, Size count)
+      {
+          cudaStream_t stream = cuda_cub::stream(policy);
+          cudaError_t  status = __parallel_for::parallel_for(count, f, stream);
+          cuda_cub::throw_on_error(status, "parallel_for failed");
+      }
+      __device__
+      static void par(execution_policy<Derived>& policy, F f, Size count)
+      {
+          (void)policy;
+          for(Size idx = 0; idx != count; ++idx)
+              f(idx);
+      }
+      __device__
+      static void seq(execution_policy<Derived>& policy, F f, Size count)
+      {
+          (void)policy;
+          for(Size idx = 0; idx != count; ++idx)
+              f(idx);
+      }
+  };
+
+#if __THRUST_HAS_CUDART__
+  workaround::par(policy, f, count);
+#else
+  workaround::seq(policy, f, count);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 }    // namespace cuda_cub

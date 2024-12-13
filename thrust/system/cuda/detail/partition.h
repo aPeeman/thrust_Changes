@@ -71,6 +71,26 @@ namespace __partition {
 
   template<class, class>
   struct Tuning;
+#ifndef USE_GPU_FUSION_DEFAULT_POLICY
+  template<class T>
+  struct Tuning<sm52, T>
+  {
+    const static int INPUT_SIZE = sizeof(T);
+
+    enum
+    {
+      NOMINAL_4B_ITEMS_PER_THREAD = 10,
+      ITEMS_PER_THREAD            = CUB_MIN(NOMINAL_4B_ITEMS_PER_THREAD, CUB_MAX(1, (NOMINAL_4B_ITEMS_PER_THREAD * 4 / sizeof(T)))),
+    };
+
+    typedef PtxPolicy<128,
+                      ITEMS_PER_THREAD,
+                      cub::BLOCK_LOAD_WARP_TRANSPOSE,
+                      cub::LOAD_LDG,
+                      cub::BLOCK_SCAN_WARP_SCANS>
+        type;
+  }; 
+#endif
 
   template<class T>
   struct Tuning<sm35, T>
@@ -846,6 +866,7 @@ partition_copy(execution_policy<Derived> &policy,
                RejectedOutIt              rejected_result,
                Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<SelectedOutIt, RejectedOutIt> ret = thrust::make_pair(selected_result, rejected_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -870,6 +891,72 @@ partition_copy(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        StencilIt                  stencil,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+      return __partition::partition(policy,
+                              first,
+                              last,
+                              stencil,
+                              selected_result,
+                              rejected_result,
+                              predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        StencilIt                  stencil,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::partition_copy(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  stencil,
+                                  selected_result,
+                                  rejected_result,
+                                  predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> seq(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        StencilIt                  stencil,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::partition_copy(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  stencil,
+                                  selected_result,
+                                  rejected_result,
+                                  predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, stencil, selected_result, rejected_result, predicate);
+#else
+  return workaround::seq(policy, first, last, stencil, selected_result, rejected_result, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -886,6 +973,7 @@ partition_copy(execution_policy<Derived> &policy,
                RejectedOutIt              rejected_result,
                Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<SelectedOutIt, RejectedOutIt> ret = thrust::make_pair(selected_result, rejected_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -909,6 +997,67 @@ partition_copy(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return __partition::partition(policy,
+                                  first,
+                                  last,
+                                  __partition::no_stencil_tag(),
+                                  selected_result,
+                                  rejected_result,
+                                  predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::partition_copy(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  selected_result,
+                                  rejected_result,
+                                  predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> seq(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::partition_copy(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  selected_result,
+                                  rejected_result,
+                                  predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, selected_result, rejected_result, predicate);
+#else
+  return workaround::seq(policy, first, last, selected_result, rejected_result, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -925,6 +1074,7 @@ stable_partition_copy(execution_policy<Derived> &policy,
                       RejectedOutIt              rejected_result,
                       Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<SelectedOutIt, RejectedOutIt> ret = thrust::make_pair(selected_result, rejected_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -948,6 +1098,67 @@ stable_partition_copy(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return  __partition::partition(policy,
+                                  first,
+                                  last,
+                                  __partition::no_stencil_tag(),
+                                  selected_result,
+                                  rejected_result,
+                                  predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::stable_partition_copy(cvt_to_seq(derived_cast(policy)),
+                                          first,
+                                          last,
+                                          selected_result,
+                                          rejected_result,
+                                          predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> seq(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::stable_partition_copy(cvt_to_seq(derived_cast(policy)),
+                                          first,
+                                          last,
+                                          selected_result,
+                                          rejected_result,
+                                          predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, selected_result, rejected_result, predicate);
+#else
+  return workaround::seq(policy, first, last, selected_result, rejected_result, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -966,6 +1177,7 @@ stable_partition_copy(execution_policy<Derived> &policy,
                       RejectedOutIt              rejected_result,
                       Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   pair<SelectedOutIt, RejectedOutIt> ret = thrust::make_pair(selected_result, rejected_result);
   if (__THRUST_HAS_CUDART__)
   {
@@ -990,6 +1202,72 @@ stable_partition_copy(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        StencilIt                  stencil,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return __partition::partition(policy,
+                                      first,
+                                      last,
+                                      stencil,
+                                      selected_result,
+                                      rejected_result,
+                                      predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> par(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        StencilIt                  stencil,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::stable_partition_copy(cvt_to_seq(derived_cast(policy)),
+                                            first,
+                                            last,
+                                            stencil,
+                                            selected_result,
+                                            rejected_result,
+                                            predicate);
+      }
+
+      __device__
+      static pair<SelectedOutIt, RejectedOutIt> seq(
+        execution_policy<Derived>& policy,
+        InputIt                    first,
+        InputIt                    last,
+        StencilIt                  stencil,
+        SelectedOutIt              selected_result,
+        RejectedOutIt              rejected_result,
+        Predicate                  predicate)
+      {
+        return thrust::stable_partition_copy(cvt_to_seq(derived_cast(policy)),
+                                            first,
+                                            last,
+                                            stencil,
+                                            selected_result,
+                                            rejected_result,
+                                            predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, stencil, selected_result, rejected_result, predicate);
+#else
+  return workaround::seq(policy, first, last, stencil, selected_result, rejected_result, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 /// inplace
@@ -1006,6 +1284,7 @@ partition(execution_policy<Derived> &policy,
           StencilIt                  stencil,
           Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   Iterator ret = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1022,6 +1301,55 @@ partition(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          StencilIt                  stencil,
+                          Predicate                  predicate)
+      {
+        Iterator result =  __partition::partition_inplace(policy, first, last, stencil, predicate);
+        cuda_cub::reverse<Derived,Iterator>(policy, result, last);
+        return result;
+      }
+
+      __device__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          StencilIt                  stencil,
+                          Predicate                  predicate)
+      {
+          return thrust::partition(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  stencil,
+                                  predicate);
+      }
+
+      __device__
+      static Iterator seq(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          StencilIt                  stencil,
+                          Predicate                  predicate)
+      {
+          return thrust::partition(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  stencil,
+                                  predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, stencil, predicate);
+#else
+  return workaround::seq(policy, first, last, stencil, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -1034,6 +1362,7 @@ partition(execution_policy<Derived> &policy,
           Iterator                   last,
           Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   Iterator ret = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1053,6 +1382,52 @@ partition(execution_policy<Derived> &policy,
 #endif
   }
   return ret;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          Predicate                  predicate)
+      {
+        return __partition::partition_inplace(policy,
+                                          first,
+                                          last,
+                                          __partition::no_stencil_tag(),
+                                          predicate);
+      }
+
+      __device__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          Predicate                  predicate)
+      {
+          return thrust::partition(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  predicate);
+      }
+
+      __device__
+      static Iterator seq(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          Predicate                  predicate)
+      {
+          return thrust::partition(cvt_to_seq(derived_cast(policy)),
+                                  first,
+                                  last,
+                                  predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, predicate);
+#else
+  return workaround::seq(policy, first, last, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -1067,6 +1442,7 @@ stable_partition(execution_policy<Derived> &policy,
                  StencilIt                  stencil,
                  Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   Iterator result = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1091,6 +1467,59 @@ stable_partition(execution_policy<Derived> &policy,
 #endif
   }
   return result;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          StencilIt                  stencil,
+                          Predicate                  predicate)
+      {
+        Iterator result =  __partition::partition_inplace(policy,
+                                      first,
+                                      last,
+                                      stencil,
+                                      predicate);
+        cuda_cub::reverse<Derived,Iterator>(policy, result, last);
+        return result;
+      }
+
+      __device__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          StencilIt                  stencil,
+                          Predicate                  predicate)
+      {
+          return thrust::stable_partition(cvt_to_seq(derived_cast(policy)),
+                                        first,
+                                        last,
+                                        stencil,
+                                        predicate);
+      }
+
+      __device__
+      static Iterator seq(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          StencilIt                  stencil,
+                          Predicate                  predicate)
+      {
+          return thrust::stable_partition(cvt_to_seq(derived_cast(policy)),
+                                        first,
+                                        last,
+                                        stencil,
+                                        predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, stencil, predicate);
+#else
+  return workaround::seq(policy, first, last, stencil, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 __thrust_exec_check_disable__
@@ -1103,6 +1532,7 @@ stable_partition(execution_policy<Derived> &policy,
                  Iterator                   last,
                  Predicate                  predicate)
 {
+#ifdef GPU_FUSION_COMPILE_THRUST
   Iterator result = first;
   if (__THRUST_HAS_CUDART__)
   {
@@ -1126,6 +1556,54 @@ stable_partition(execution_policy<Derived> &policy,
 #endif
   }
   return result;
+#else //GPU_FUSION_COMPILE_THRUST
+  struct workaround
+  {
+      __host__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          Predicate                  predicate)
+      {
+        Iterator result =  __partition::partition_inplace(policy,
+                                        first,
+                                        last,
+                                        __partition::no_stencil_tag(),
+                                        predicate);
+        cuda_cub::reverse<Derived,Iterator>(policy, result, last);
+        return result;
+      }
+
+      __device__
+      static Iterator par(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          Predicate                  predicate)
+      {
+          return thrust::stable_partition(cvt_to_seq(derived_cast(policy)),
+                                        first,
+                                        last,
+                                        predicate);
+      }
+
+      __device__
+      static Iterator seq(execution_policy<Derived>& policy,
+                          Iterator                   first,
+                          Iterator                   last,
+                          Predicate                  predicate)
+      {
+          return thrust::stable_partition(cvt_to_seq(derived_cast(policy)),
+                                        first,
+                                        last,
+                                        predicate);
+      }
+  };
+#if __THRUST_HAS_CUDART__
+  return workaround::par(policy, first, last, predicate);
+#else
+  return workaround::seq(policy, first, last, predicate);
+#endif
+#endif //GPU_FUSION_COMPILE_THRUST
 }
 
 template <class Derived,
